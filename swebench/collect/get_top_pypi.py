@@ -14,7 +14,7 @@ gh_token = os.environ.get("GITHUB_TOKEN")
 if not gh_token:
     msg = "Please set the GITHUB_TOKEN environment variable."
     raise ValueError(msg)
-api = GhApi(token="gh_token")
+api = GhApi(token=gh_token)
 
 
 def get_package_stats(data_tasks, f):
@@ -70,9 +70,12 @@ def get_package_stats(data_tasks, f):
                     repo = api.repos.get(owner, name)
                     stars_count = int(repo["stargazers_count"])
                     issues = api.issues.list_for_repo(owner, name)
-                    pulls_count = int(issues[0]["number"])
-                except:
-                    pass
+                    pulls_count = len(
+                        [issue for issue in issues if "pull_request" in issue]
+                    )
+                except Exception as e:
+                    print(f"Error fetching data for {owner}/{name}: {str(e)}")
+                    stars_count, pulls_count = None, None
 
             # Write to file
             print(
