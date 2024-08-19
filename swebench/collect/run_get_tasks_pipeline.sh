@@ -5,6 +5,7 @@
 # * Declare GITHUB_TOKENS=token1,token2,token3...
 
 python get_tasks_pipeline.py \
-    --repos 'scikit-learn/scikit-learn', 'pallets/flask' \
-    --path_prs '<path to folder to save PRs to>' \
-    --path_tasks '<path to folder to save tasks to>'
+    --repos 'scikit-learn/scikit-learn' \
+    --path_prs 'scrapes/20231101/prs' \
+    --path_tasks 'scrapes/20231101/tasks' \
+    --cutoff_date '20231101'
