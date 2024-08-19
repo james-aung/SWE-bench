@@ -6,6 +6,7 @@ import argparse
 from bs4 import BeautifulSoup
 from ghapi.core import GhApi
 from selenium import webdriver
+from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.common.by import By
 
 
@@ -97,9 +98,13 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    # Set up Firefox in headless mode
+    firefox_options = Options()
+    firefox_options.add_argument("--headless")
+    driver = webdriver.Firefox(options=firefox_options)
+
     # Start selenium driver to get top 5000 pypi page
     url_top_pypi = "https://hugovk.github.io/top-pypi-packages/"
-    driver = webdriver.Chrome()
     driver.get(url_top_pypi)
     button = driver.find_element(By.CSS_SELECTOR, 'button[ng-click="show(8000)"]')
     button.click()
