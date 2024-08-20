@@ -47,6 +47,8 @@ def get_package_stats(data_tasks, f):
             package_github = None
             driver.get(package_url)
             soup = BeautifulSoup(driver.page_source, "html.parser")
+
+            # First attempt: look for specific links
             for link in soup.find_all("a", class_="vertical-tabs__tab--with-icon"):
                 found = False
                 for x in ["Source", "Code", "Homepage"]:
@@ -60,8 +62,27 @@ def get_package_stats(data_tasks, f):
                 if found:
                     break
 
-            # Get stars and pulls from github API
-            stars_count, pulls_count = None, None
+            # Second attempt: look for GitHub statistics in sidebar
+            if not package_github:
+                github_stats = soup.find("div", class_="github-repo-info")
+                if github_stats:
+                    links = github_stats.find_all("a", class_="vertical-tabs__tab")
+                    for link in links:
+                        href = link.get("href", "")
+                        if any(
+                            x in href
+                            for x in [
+                                "stargazers",
+                                "network/members",
+                                "issues",
+                                "pulls",
+                            ]
+                        ):
+                            package_github = "/".join(
+                                href.split("/")[:5]
+                            )  # Get base GitHub URL
+                            break
+
             if package_github is not None:
                 repo_parts = package_github.split("/")[-2:]
                 owner, name = repo_parts[0], repo_parts[1]
