@@ -83,6 +83,8 @@ def get_package_stats(data_tasks, f):
                             )  # Get base GitHub URL
                             break
 
+            # Get stars and closed PRs from github API
+            stars_count, closed_prs_count = None, None
             if package_github is not None:
                 repo_parts = package_github.split("/")[-2:]
                 owner, name = repo_parts[0], repo_parts[1]
@@ -90,13 +92,14 @@ def get_package_stats(data_tasks, f):
                 try:
                     repo = api.repos.get(owner, name)
                     stars_count = int(repo["stargazers_count"])
-                    issues = api.issues.list_for_repo(owner, name)
-                    pulls_count = len(
-                        [issue for issue in issues if "pull_request" in issue]
-                    )
+
+                    # Get closed PRs
+                    closed_prs = api.pulls.list(owner, name, state="closed", per_page=1)
+                    closed_prs_count = closed_prs.total_count
+
                 except Exception as e:
                     print(f"Error fetching data for {owner}/{name}: {str(e)}")
-                    stars_count, pulls_count = None, None
+                    stars_count, closed_prs_count = None, None
 
             # Write to file
             print(
@@ -107,7 +110,7 @@ def get_package_stats(data_tasks, f):
                         "url": package_url,
                         "github": package_github,
                         "stars": stars_count,
-                        "pulls": pulls_count,
+                        "closed_prs": closed_prs_count,
                     }
                 ),
                 file=fp_,
@@ -127,7 +130,7 @@ if __name__ == "__main__":
     firefox_options.add_argument("--headless")
     driver = webdriver.Firefox(options=firefox_options)
 
-    # Start selenium driver to get top 5000 pypi page
+    # Start selenium driver to get top pypi page
     url_top_pypi = "https://hugovk.github.io/top-pypi-packages/"
     driver.get(url_top_pypi)
     button = driver.find_element(By.CSS_SELECTOR, 'button[ng-click="show(8000)"]')
