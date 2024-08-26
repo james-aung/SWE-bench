@@ -116,6 +116,8 @@ def main(pr_file: str, output: str, token: Optional[str] = None):
     completed = 0
     with_tests = 0
     total_instances = 0
+    invalid_pulls = 0
+    invalid_instances = 0
     all_output = output + ".all"
     seen_prs = set()
 
@@ -148,7 +150,7 @@ def main(pr_file: str, output: str, token: Optional[str] = None):
                 if ix % 100 == 0:
                     logger.info(
                         f"[{pull['base']['repo']['full_name']}] (Up to {ix} checked) "
-                        f"{completed} valid, {with_tests} with tests."
+                        f"{completed} valid, {with_tests} with tests, {invalid_pulls} invalid pulls, {invalid_instances} invalid instances."
                     )
                 # Construct instance fields
                 instance_id = (
@@ -160,6 +162,7 @@ def main(pr_file: str, output: str, token: Optional[str] = None):
                     continue
                 if not is_valid_pull(pull):
                     # Throw out invalid PRs
+                    invalid_pulls += 1
                     continue
                 # Create task instance
                 repo_name = pull["base"]["repo"]["full_name"]
@@ -177,7 +180,10 @@ def main(pr_file: str, output: str, token: Optional[str] = None):
                         # If has test suite, write to output file
                         print(json.dumps(instance), end="\n", flush=True, file=output)
                         with_tests += 1
+                else:
+                    invalid_instances += 1
     logger.info(f"[{', '.join(repos.keys())}] Total instances: {total_instances}, completed: {completed}, with tests: {with_tests}")
+    logger.info(f"[{', '.join(repos.keys())}] Invalid pulls: {invalid_pulls}, Invalid instances: {invalid_instances}")
     logger.info(f"[{', '.join(repos.keys())}] Skipped {len(seen_prs)} pull requests that have already been inspected")
 
 
