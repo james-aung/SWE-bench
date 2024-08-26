@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 
-import os, json
+import os
+import json
 import argparse
+import logging
+from typing import List, Dict
+import pickle
 
 from bs4 import BeautifulSoup
 from ghapi.core import GhApi
@@ -9,6 +13,11 @@ from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.common.by import By
 
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 gh_token = os.environ.get("GITHUB_TOKEN")
 if not gh_token:
@@ -17,30 +26,32 @@ if not gh_token:
 api = GhApi(token=gh_token)
 
 
-def get_package_stats(data_tasks, f):
+def get_package_stats(top_packages, output_file):
     """
     Get package stats from pypi page
 
     Args:
-        data_tasks (list): List of packages + HTML
-        f (str): File to write to
+        top_packages (list): List of packages + HTML
+        output_file (str): File to write to
+        driver (webdriver): Selenium WebDriver instance
     """
-    # Adjust access type if file already exists
-    content = None
-    access_type = "w"
-    if os.path.exists(f):
-        with open(f) as fp_:
-            content = fp_.read()
-            access_type = "a"
-            fp_.close()
+    logger.info(f"Getting package stats for {len(top_packages)} packages")
+
+    firefox_options = Options()
+    firefox_options.add_argument("--headless")
+    driver = webdriver.Firefox(options=firefox_options)
 
     # Extra package title, pypi URL, stars, pulls, and github URL
-    with open(f, access_type) as fp_:
-        for idx, chunk in enumerate(data_tasks):
+    with open(output_file, "a+") as fp_:
+        fp_.seek(0)  # Move the file pointer to the beginning
+        content = fp_.read()
+
+        for i, package in enumerate(top_packages, 1):
+            logger.debug(f"Processing package {i}/{len(top_packages)}: {package}")
             # Get package name and pypi URL
-            package_name = chunk["title"]
-            package_url = chunk["href"]
-            if content is not None and package_url in content:
+            package_name = package["title"]
+            package_url = package["href"]
+            if package_url in content:
                 continue
 
             # Get github URL
@@ -75,10 +86,11 @@ def get_package_stats(data_tasks, f):
                     pass
 
             # Write to file
+            logger.debug(f"Writing data for {package_name}")
             print(
                 json.dumps(
                     {
-                        "rank": idx,
+                        "rank": i,
                         "name": package_name,
                         "url": package_url,
                         "github": package_github,
@@ -90,28 +102,82 @@ def get_package_stats(data_tasks, f):
                 flush=True,
             )
 
+    logger.info(f"Finished processing all packages. Data written to {output_file}")
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--max-repos", help="Maximum number of repos to get", type=int, default=5000
-    )
-    args = parser.parse_args()
+
+def get_top_pypi_packages(max_repos: int) -> List[Dict[str, str]]:
+    """
+    Get top PyPI packages from hugovk's page.
+
+    Args:
+        max_repos (int): Maximum number of repos to get
+
+    Returns:
+        List[Dict[str, str]]: List of dictionaries containing package info
+    """
+    logger.info(f"Fetching top {max_repos} PyPI packages")
 
     # Set up Firefox in headless mode
     firefox_options = Options()
     firefox_options.add_argument("--headless")
     driver = webdriver.Firefox(options=firefox_options)
 
-    # Start selenium driver to get top 5000 pypi page
-    url_top_pypi = "https://hugovk.github.io/top-pypi-packages/"
-    driver.get(url_top_pypi)
-    button = driver.find_element(By.CSS_SELECTOR, 'button[ng-click="show(8000)"]')
-    button.click()
+    try:
+        # Start selenium driver to get top PyPI packages
+        url_top_pypi = "https://hugovk.github.io/top-pypi-packages/"
+        logger.debug(f"Accessing URL: {url_top_pypi}")
+        driver.get(url_top_pypi)
 
-    # Retrieve HTML for packages from page
-    soup = BeautifulSoup(driver.page_source, "html.parser")
-    package_list = soup.find("div", {"class": "list"})
-    packages = package_list.find_all("a", class_="ng-scope")
+        logger.debug("Clicking 'Show more' button")
+        button = driver.find_element(By.CSS_SELECTOR, 'button[ng-click="show(8000)"]')
+        button.click()
 
-    get_package_stats(packages[: args.max_repos], "pypi_rankings.jsonl")
+        # Retrieve HTML for packages from page
+        logger.debug("Parsing page content")
+        soup = BeautifulSoup(driver.page_source, "html.parser")
+        package_list = soup.find("div", {"class": "list"})
+        packages = package_list.find_all("a", class_="ng-scope")
+
+        result = [
+            {"title": pkg["title"], "href": pkg["href"]} for pkg in packages[:max_repos]
+        ]
+        logger.info(f"Successfully fetched {len(result)} packages")
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching top PyPI packages: {str(e)}")
+        raise
+    finally:
+        logger.debug("Closing Selenium driver")
+        driver.quit()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--max-repos", help="Maximum number of repos to get", type=int, default=5000
+    )
+    parser.add_argument("--debug", help="Enable debug logging", action="store_true")
+    parser.add_argument(
+        "--force-fetch", help="Force fetching packages from web", action="store_true"
+    )
+    args = parser.parse_args()
+
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
+
+    logger.info(f"Starting script with max_repos={args.max_repos}")
+
+    cache_file = "top_packages_cache.pkl"
+
+    if not args.force_fetch and os.path.exists(cache_file):
+        logger.info("Reading top packages from cache")
+        with open(cache_file, "rb") as f:
+            top_packages = pickle.load(f)
+    else:
+        logger.info("Fetching top packages from web")
+        top_packages = get_top_pypi_packages(args.max_repos)
+        with open(cache_file, "wb") as f:
+            pickle.dump(top_packages, f)
+
+    get_package_stats(top_packages, "pypi_rankings.jsonl")
+    logger.info("Script completed successfully")
